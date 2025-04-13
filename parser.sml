@@ -1,14 +1,17 @@
 signature PARSER_SIG =
 sig
-	type 'a parser
-	val create_parser : (string -> ('a * string) option) -> 'a parser
-	val run_parser : 'a parser -> string -> ('a * string) option
-	val charP : char -> char parser
+	include FUNCTOR_SIG
+	include APPLICATIVE_SIG
+
+	val create_parser : (string -> ('a * string) option) -> 'a t
+	val run_parser : 'a t -> string -> ('a * string) option
+	val charP : char -> char t
 end
 
-functor Parser_Functor() :> PARSER_SIG =
+structure Parser :> PARSER_SIG =
 struct
-type 'a parser = string -> ('a * string) option
+type 'a t = string -> ('a * string) option
+type 'a parser = 'a t
 
 (* Wrapper for Constructing parser types.
  *
@@ -36,6 +39,20 @@ fun charP c = (fn s =>
 						  then SOME (c, xs) 
 						  else NONE
 					  end)
-end
 
-structure Parser = Parser_Functor()
+(* "Penetrates" the parser and apply f to it's result.
+ *
+ * f : ('a -> 'b) -> 'a parser -> 'b parser *)
+fun fmap f p = 
+	(fn s =>
+       case p s of
+           NONE => NONE
+		 | SOME (x, rest) => SOME (f x, rest))
+
+
+(* Returns a parser that ignores it's input and foward it as SOME (x, input).
+ *
+ * f : 'a -> 'a parser *)
+fun pure x = fn input => SOME (x, input)
+	
+end
