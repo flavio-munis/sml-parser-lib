@@ -1,26 +1,16 @@
 signature OPTION_EXTENDED_SIG =
 sig
-	include APPLICATIVE_SIG
-
-	val wrap    : 'a option -> 'a t
-	val unwrap  : 'a t -> 'a option
-	val apply_f : 'a option -> ('a t -> 'b t) -> 'b option
+	include MONAD_SIG
 end
 
-structure Option_Ext :> OPTION_EXTENDED_SIG =
+structure Option_Ext : OPTION_EXTENDED_SIG =
 struct
+
 type 'a t = 'a option
-
-fun wrap (SOME x) = SOME x
-  | wrap NONE = NONE
-
-fun unwrap x = x
-
-fun apply_f opt f = unwrap (f (wrap opt))
 
 fun fmap f opt =
 	case opt of
-        NONE => unwrap NONE
+        NONE => NONE
       | SOME x => SOME (f x)
 
 
@@ -36,12 +26,25 @@ fun pure x = SOME x
 
 infix 1 <*>
 
-fun op <*> opt1 opt2 =
+fun op <*> (opt1, opt2) =
 	case opt1 of
 		NONE => NONE
 	  | SOME f => 
 		(case opt2 of
 			 NONE => NONE
 		   | SOME x => SOME (f x))
+
+
+infix 1 >=>
+
+fun op >=> (f, g) a =
+	case f a of
+		NONE => NONE
+	  | SOME b => 
+		(case g b of
+		     NONE => NONE
+		   | SOME c => SOME c)
+
+val return = pure
 
 end

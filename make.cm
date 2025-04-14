@@ -1,4 +1,9 @@
-Group is
-	   $/basis.cm
-	   interfaces.sig
-	   parser.sml
+Library
+	structure Parser   
+	structure Option_Ext
+is
+	interfaces.sig
+	option-extended.sml
+	parser.sml
+
+$/basis.cm

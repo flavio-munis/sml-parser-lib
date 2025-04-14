@@ -19,6 +19,14 @@ signature APPLICATIVE_SIG =
 sig
 	include FUNCTOR_SIG
 
-	val <*>  : ('a -> 'b) t -> 'a t -> 'b t
+	val <*>  : ('a -> 'b) t * 'a t -> 'b t
 	val pure : 'a -> 'a t
+end
+
+signature MONAD_SIG =
+sig
+	include APPLICATIVE_SIG
+
+	val >=>    : ('a -> 'b t) * ('b -> 'c t) -> 'a -> 'c t
+	val return : 'a -> 'a t
 end
