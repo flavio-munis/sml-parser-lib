@@ -1,9 +1,11 @@
 Library
 	structure Parser   
 	structure Option_Ext
+	structure JsonParser
 is
 	interfaces.sig
 	option-extended.sml
 	parser.sml
+	json-parser.sml
 
 $/basis.cm

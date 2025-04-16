@@ -1,6 +1,9 @@
 signature OPTION_EXTENDED_SIG =
 sig
+	include FUNCTOR_SIG
+	include APPLICATIVE_SIG
 	include MONAD_SIG
+	include ALTERNATIVE_SIG
 end
 
 structure Option_Ext : OPTION_EXTENDED_SIG =
@@ -22,6 +25,25 @@ infix 1 <*
 (* MONAD_SIG Operators *)
 infix 1 >=>
 infix 1 >>=
+
+(* ALTERNATIVE_SIG Operators *)
+infix 1 <|>
+
+
+(* ALTERNATIVE_SIG Operators *)
+
+(* Empty value in a type t context.
+ *
+ * f : unit -> 'a option *)
+fun empty () = NONE
+
+(* Or operator for comparing two values of type 'a t.
+ *
+ * f : 'a option -> 'a option -> 'a option *)
+fun op <|> (opt1, opt2) = 
+	case opt1 of
+		NONE   => opt2
+	  | SOME _ => opt1
 
 
 (* FUNCTOR_SIG Definitions *)
@@ -70,14 +92,31 @@ fun op <*> (opt1, opt2) = apply opt1 opt2
 (* Ignores the left value.
  *
  * f : 'a option ->/* 'b option -> 'a option *)
-fun leftsq opt1 opt2 = opt1
+fun leftsq opt1 opt2 = 
+	case opt1 of
+		NONE => NONE
+	  | SOME x => (
+		  case opt2 of
+			  NONE => NONE
+			| SOME _ => SOME x)
+
 fun op <* (opt1, opt2) = leftsq opt1 opt2
 
 (* Ignores the right value.
  *
  * f : 'a option ->/* 'b option -> 'b option *)
-fun rightsq opt1 opt2 = opt2
+fun rightsq opt1 opt2 = 
+	case opt1 of
+		NONE => NONE
+	  | SOME _ => opt2
+
 fun op *> (opt1, opt2) = rightsq opt1 opt2
+
+
+(* Elevate a function f to a context and apply both elements.
+ *
+ * f : ('a -> 'b -> 'c) -> 'a option -> 'b option -> 'c option *)
+fun liftA2 f opt1 opt2 = apply (apply (pure f) opt1) opt2
 
 
 (* Helper function to append to a list. (until List_Ext is made).
@@ -93,6 +132,25 @@ fun sequenceA opts =
 	case opts of
 		[] => pure []
 	  | x::xs' => x <$> append <*> (sequenceA xs')
+
+
+(* Matches type t zero or more times creating a list.
+ *
+ * f : 'a option -> 'a list option *)
+fun many opt =
+    let 
+        fun step acc opt' =
+            case opt' of
+                NONE => SOME acc
+              | SOME x => step (x::acc) opt'
+    in
+        SOME [] <|> (step [] opt)
+    end
+
+(* Matches type t one or more times creating a list.
+ *
+ * f : 'a option -> 'a list option *)
+fun some opt = opt <$> append <*> many opt
 
 
 (* MONAD_SIG Definitions *)
@@ -112,5 +170,4 @@ fun op >>= (opt, f) = bind opt f
  * f : ('a -> 'b option) -> ('b -> c' option) -> 'a -> 'c option *)
 fun fish_bind f g a = (f a) >>= g
 fun op >=> (f, g) a = fish_bind f g a
-
 end
