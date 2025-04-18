@@ -4,6 +4,9 @@ Implements a parser combinator library to create powerful parsers using few a fu
 ## **Interfaces**
 The `interface.sig` file define haskell-like abstract signatures that can be used by any valid _type t_.
 
+## **Tests**
+Run `CM.make "run-tests.cm"` in tests folder to automatically run all unit tests.
+
 ## **Implementation**
 ### **Json Parser**
 Implements a fully functional Json Parser using the `parser.sml` functions. 
