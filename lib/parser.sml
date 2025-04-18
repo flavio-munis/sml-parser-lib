@@ -204,19 +204,20 @@ fun spanP f =
 			val len = String.size s
 
 			(* Accumulate characters one by one *)
-			fun loop (i, acc) =
+			fun loop i =
 				if i >= len 
-				then SOME (rev acc, "") 
+				then SOME (String.extract (s, 0, SOME len), "") 
 				else
 					let 
 						val c = String.sub(s, i) 
 					in
 						if f c 
-						then loop (i + 1, c :: acc)
-						else SOME (rev acc, String.extract (s, i, NONE))
+						then loop i + 1
+						else SOME (String.extract (s, 0, SOME i),
+								   String.extract (s, i, SOME (len - i)))
 					end
 		in
-			loop (0, [])
+			loop 0
 		end)
 
 (* Parses a natural number x >= 0.
