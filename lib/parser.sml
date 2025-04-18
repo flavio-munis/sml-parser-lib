@@ -206,15 +206,15 @@ fun spanP f =
 			(* Accumulate characters one by one *)
 			fun loop i =
 				if i >= len 
-				then SOME (String.extract (s, 0, SOME len), "") 
+				then SOME (explode (String.extract (s, 0, SOME len)), "") 
 				else
 					let 
 						val c = String.sub(s, i) 
 					in
 						if f c 
-						then loop i + 1
-						else SOME (String.extract (s, 0, SOME i),
-								   String.extract (s, i, SOME (len - i)))
+						then loop (i + 1)
+						else SOME (explode (String.extract (s, 0, SOME i)),
+								   String.extract (s, i, NONE))
 					end
 		in
 			loop 0
