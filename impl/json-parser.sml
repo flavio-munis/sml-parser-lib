@@ -29,7 +29,7 @@ infix 1 <*> *> <*
 infix 1 >=> >>=
 
 (* ALTERNATIVE_SIG Operators *)
-infix 1 <|>
+infix 1 <|> <||>
 
 datatype JsonValue = JsonNull
 		   | JsonBool of bool
@@ -38,10 +38,20 @@ datatype JsonValue = JsonNull
 		   | JsonArray of JsonValue list
 		   | JsonObject of (string * JsonValue) list
 
+
+(* Helper function to provide better error messages
+ *
+ * f : string -> 'a parser -> 'a parser *)
+fun withErrorMsg msg p =
+  (fn state =>
+    case p state of
+      SUCCESS res => SUCCESS res
+    | FAILURE (_, failed_state) => FAILURE (msg, failed_state))
+
 (* Return a Null Value Parser
  *
  * f : JsonValue parser *)
-val jsonNull = (stringP "null") <$> (fn _ => JsonNull);
+val jsonNull = withErrorMsg "Expected \"null\" value" ((stringP "null") <$> (fn _ => JsonNull))
 
 (* Parser for boolean values (true | false)
  *
@@ -53,20 +63,25 @@ val jsonBool =
 			then JsonBool true
 			else JsonBool false
 	in
-		((stringP "true") <|> (stringP "false")) <$> f
+		withErrorMsg "Expected \"true\" or \"false\"" (((stringP "true") <||> (stringP "false")) <$> f)
 	end
 
 
 (* Parser for natural numbers
  *
  * f : JsonValue parser *)
-val jsonNumber = natP <$> (fn n => JsonNumber n)
+val jsonNumber = withErrorMsg "Expected Natural Number" (natP <$> (fn n => JsonNumber n))
 
 
 (* Parser for strings encapsulated by double quotes \"...\"
  *
  * f : char list parser *)
-val stringLiteral = (charP #"\"") *> (spanP (fn c => c <> #"\"")) <* (charP #"\"")
+val stringLiteral = 
+	let
+		val close_quote = withErrorMsg "Unclosed Bracket \"" ((charP #"\""))
+	in 
+		(charP #"\"") *> (spanP (fn c => c <> #"\"")) <* close_quote
+	end
 
 
 (* Parser for strings encapsulated by double quotes \"...\"
@@ -82,7 +97,7 @@ val ws = spanP Char.isSpace
 (* Parser for removing spaces between commas 
  *
  * f : char parser *)
-val sep_comma = ws *> (charP #",") <* ws
+val sep_comma = withErrorMsg "Expected ',' separator." (ws *> (charP #",") <* ws)
 
 (* aux function 
  *
@@ -93,7 +108,7 @@ fun append x y = x::y
  *
  * f : 'a parser -> 'b parser -> 'b list parser *)
 fun sepBy sep element = 
-	(element <$> append <*> (many (sep *> element))) <|> pure [] 
+	(element <$> append <*> (many (sep *> element))) <||> pure [] 
 
 
 (* Return a recursive array parser.
@@ -102,8 +117,9 @@ fun sepBy sep element =
 fun jsonArray self =
 	let
 		val elements = sepBy sep_comma self
+		val close_bracket = withErrorMsg "Expected ']' to close array." (charP #"]")
 	in
-		(charP #"[" *> ws *> elements <* ws <* charP #"]") <$> (fn x => JsonArray x)
+		(charP #"[" *> ws *> elements <* ws <* close_bracket) <$> (fn x => JsonArray x)
 	end
 
 (* Return a recursive object parser.
@@ -113,26 +129,31 @@ fun jsonObject self =
 	let
 		fun make_pair x y = (implode x, y)
 
-		val pair = liftA2 make_pair 
-						  (stringLiteral 
-						  <* ws <* 
-						  (charP #":")
-						  <* ws)
-						  self
+		val pair = withErrorMsg "Expected property name: value pair"
+								(liftA2 make_pair 
+										(stringLiteral 
+											 <* ws <* 
+											 (charP #":")
+											 <* ws)
+										self)
+		val close_braces = withErrorMsg "Expected '}' to close Object."
+										(charP #"}")
+										
 	in
 		((charP #"{") 
 		*> ws *>
 		(sepBy sep_comma pair)
 		<* ws <*
-		(charP #"}")) <$> (fn x => JsonObject x)
+		close_braces) <$> (fn x => JsonObject x)
 	end
+
 
 (* non-recursive JsonValues.
  *
  * f : JsonValue parser *)
 val non_recursive = 
 	ws *>
-	(jsonNull <|> jsonBool <|> jsonNumber <|> jsonString)
+	(jsonNull <||> jsonBool <||> jsonNumber <||> jsonString)
 	<* ws
 
 (* Fixed Point Combinator for recursive JsonValues.
@@ -141,15 +162,26 @@ val non_recursive =
 val recursive =
 	let
 		fun p input =
-			(ws *> ((jsonObject p) <|> (jsonArray p) <|> non_recursive) <* ws) input
+			(ws *> ((jsonObject p) <||> (jsonArray p) <||> non_recursive) <* ws) input
 	in
 		p
 	end
 
+(* Ensure the parser consumes the entire input *)
+fun all_input p =
+	(fn state : parser_state =>
+		case p state of
+			SUCCESS (result, state' : parser_state) =>
+			if String.size (#input state') = 0 then
+				SUCCESS (result, state')
+			else
+				FAILURE ("Unexpected content", state')
+		  | FAILURE x => FAILURE x)
+
 (* Function exposed by the sig.
  *
  * f : JsonValue parser *)
-val parseJson = recursive
+val parseJson = all_input recursive
 
 (* Convert a JsonValue to String.
  *

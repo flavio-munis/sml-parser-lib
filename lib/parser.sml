@@ -162,7 +162,7 @@ infix 2 <$> <$ $>
 infix 1 <*> *> <*
 		
 (* ALTERNATIVE_SIG Operators *)
-infix 1 <|>
+infix 1 <|> <||>
 
 
 (* FUNCTOR_SIG Definitions *)
@@ -297,6 +297,32 @@ fun op <|> (p1, p2) =
 		case p1 state of
 			FAILURE _ => p2 state
 		  | SUCCESS x => SUCCESS x)
+
+(* Improved <|> operator that preserves the most relevant error message 
+ * 
+ * f : 'a parser -> 'a parser -> 'a parser *)
+fun op <||> (p1, p2) = 
+  (fn state : parser_state => 
+      case p1 state of
+		  SUCCESS x => SUCCESS x
+		| FAILURE (msg1, state1 : parser_state) => 
+          case p2 state of
+			  SUCCESS x => SUCCESS x
+			| FAILURE (msg2, state2 : parser_state) =>
+              (* Choose the error from the parser that consumed more input *)
+              let
+				  val consumed1 = 
+					  String.size 
+						  (#full_input state) - String.size (#input state1)
+				  val consumed2 = 
+					  String.size 
+						  (#full_input state) - String.size (#input state2)
+            in
+              if consumed1 > consumed2 then
+                FAILURE (msg1, state1)
+              else
+                FAILURE (msg2, state2)
+            end)
 
 
 (* Creates a closure for parsing the char c.
