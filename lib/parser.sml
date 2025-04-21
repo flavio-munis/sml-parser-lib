@@ -1,15 +1,11 @@
 signature PARSER_SIG =
 sig
-	(*include FUNCTOR_SIG*)
+	include FUNCTOR_SIG
+	include APPLICATIVE_SIG
+	include ALTERNATIVE_SIG
 
-	type position = int * int
-							  
-	type parser_state = {
-		input: string,
-		pos: position,
-		full_input: string,
-		line_index: int list
-	}
+	type position			  
+	type parser_state
 
 	datatype 'a parser_result =  
 			 SUCCESS of 'a * parser_state
@@ -18,9 +14,11 @@ sig
 	type 'a parser = parser_state -> 'a parser_result
 
 	val run_parser   : 'a parser -> string -> 'a parser_result
-	val create_state : string -> parser_state
 	val charP        : char ->  char parser
-	val error_msg    : string -> parser_state -> string
+	val stringP      : string -> char list parser
+	val not_null     : 'a list parser -> 'a list parser
+	val spanP        : (char -> bool) -> char list parser
+	val natP         : int parser
 end
 
 structure Parser : PARSER_SIG =
@@ -40,8 +38,9 @@ datatype 'a parser_result =
 	   | FAILURE of string * parser_state
 
 type 'a parser = parser_state -> 'a parser_result
+type 'a t = 'a parser
 
-
+(* BASIC PARSER FUNCTIONS *)
 (* Create a new state for a parser.
  *
  * f : string -> parser_state *)
@@ -153,6 +152,152 @@ fun run_parser p s =
 		  | _ => res 
 	end
 
+(* INTERFACES DEFINITIONS *)
+
+(* Infix Operators Orders *)
+(* FUNCTOR_SIG Operators *)
+infix 2 <$> <$ $>
+
+(* APPLICATIVE_SIG Operators *)
+infix 1 <*> *> <*
+		
+(* ALTERNATIVE_SIG Operators *)
+infix 1 <|>
+
+
+(* FUNCTOR_SIG Definitions *)
+
+(* "Penetrates" the type 'a t and apply f to it's value.
+ *
+ * f : ('a -> 'b) ->/* 'a parser -> 'b parser *)
+fun fmap f p = 
+	(fn state =>
+		case p state of
+			FAILURE x => FAILURE x
+		  | SUCCESS (x, state') => SUCCESS (f x, state'))
+
+fun op <$> (p, f) = fmap f p
+
+(* "Penetrates" type 'b t and change it to 'a t without losing context.
+ *
+ * f : 'a ->/* 'b parser -> 'a parser *)
+fun rplc_left a p = p <$> (fn _ => a)
+fun op <$ (a, p) = rplc_left a p
+
+(* "Penetrates" type 'a t and change it to 'b t without losing context.
+ *
+ * f : 'a parser ->/* 'b -> 'b parser *)
+fun rplc_right p b = b <$ p
+fun op $> (p, b) = rplc_right p b
+
+
+(* APPLICATIVE_SIG Definitions *)
+
+(* Returns a parser that ignores it's input and foward it as SOME (x, input).
+ *
+ * f : 'a -> 'a parser *)
+fun pure x = fn state => SUCCESS (x, state)
+
+
+(* Apply Operator, apply a function wrapped in context t to a value in a context t.
+ *
+ * f : ('a -> 'b) parser ->/* 'a parser -> 'b parser *)
+fun apply p1 p2 = 
+	(fn state =>
+		case p1 state of
+			FAILURE x => FAILURE x
+		  | SUCCESS (f, state') =>
+			(case p2 state' of
+				 FAILURE x' => FAILURE x'
+			   | SUCCESS (a, state'') => SUCCESS (f a, state'')))
+
+fun op <*> (p1, p2) = apply p1 p2
+
+
+(* Ignores the left value.
+ *
+ * f : 'a parser ->/* 'b parser -> 'a parser *)
+fun leftsq p1 p2 = 
+	(fn state =>
+		case p1 state of
+			FAILURE x => FAILURE x
+		  | SUCCESS (a, state') =>
+			(case p2 state' of
+				 FAILURE x' => FAILURE x'
+			   | SUCCESS (_, state'') => SUCCESS (a, state'')))
+	
+fun op <* (p1, p2) = leftsq p1 p2
+
+(* Ignores the right value.
+ *
+ * f : 'a parser ->/* 'b parser -> 'b parser *)
+fun rightsq p1 p2 = 
+	(fn state =>
+		case p1 state of
+			FAILURE x => FAILURE x
+		  | SUCCESS (_, state') => p2 state')
+
+fun op *> (p1, p2) = rightsq p1 p2
+
+
+
+(* Elevate a function f to a context and apply both elements.
+ *
+ * f : ('a -> 'b -> 'c) -> 'a parser -> 'b parser -> 'c parser *)
+fun liftA2 f p1 p2 = apply (apply (pure f) p1) p2
+
+
+(* Helper function to append to a list. (until List_Ext is made).
+ *
+ * f : 'a parser -> ('a -> b' parser) -> 'b parser *)
+fun append x y = x::y
+
+(* Turns a type inside out.
+ *
+ * f : 'a parser list -> 'a list parser *)
+fun sequenceA ps = 
+	case ps of
+		[] => pure []
+	  | x::xs' => x <$> append <*> (sequenceA xs')
+
+(* Matches type t zero or more times creating a list.
+ *
+ * f : 'a parser -> 'a list parser *)
+fun many p =
+    let 
+        fun step state =
+            case p state of
+                FAILURE _ => SUCCESS ([], state)
+              | SUCCESS (x, state') =>
+                (case step state' of
+                    FAILURE _ => SUCCESS ([x], state')
+                  | SUCCESS (xs, state'') => SUCCESS (x::xs, state''))
+    in
+        step
+    end
+
+(* Matches type t one or more times creating a list.
+ *
+ * f : 'a parser -> 'a list parser *)
+fun some p = p <$> append <*> many p
+
+
+(* ALTERNATIVE_SIG Operators *)
+
+(* Empty value in a type t context.
+ *
+ * f : unit -> 'a parser *)
+fun empty () = (fn state => FAILURE ("", state))
+
+(* Or operator for comparing two values of type 'a t.
+ *
+ * f : 'a parser -> 'a parser -> 'a parser *)
+fun op <|> (p1, p2) = 
+	(fn state => 
+		case p1 state of
+			FAILURE _ => p2 state
+		  | SUCCESS x => SUCCESS x)
+
 
 (* Creates a closure for parsing the char c.
  *
@@ -178,9 +323,102 @@ fun charP c =
 
 				val (s', xs) = (String.sub(s, 0), String.extract(s, 1, NONE))
 			in
-				if s' = c 
-				then SUCCESS (c, {input = xs, pos = (line + 1, column), full_input=fi, line_index = li}) 
+				if s' = c
+				then 
+					if s' = #"\n"
+					then SUCCESS (c, {input = xs, pos = (line + 1, 0), full_input=fi, line_index = li})
+					else SUCCESS (c, {input = xs, pos = (line, column + 1), full_input=fi, line_index = li})
 				else FAILURE ("Expected " ^ (Char.toString c) ^ ", But Got " ^ (Char.toString s'), state)
 			end)
+
+(* Parse a sequence of char.
+ *
+ * f : string -> char list parser *)	
+fun stringP s =
+	(fn state =>
+		let
+			val expected = s
+			val p = sequenceA (map charP (explode s))
+		in
+			case p state of
+				SUCCESS res => SUCCESS res
+			  | FAILURE (_, failed_state) => 
+				FAILURE ("Expected \"" ^ expected ^ "\"", failed_state)
+		end)
+
+(* Checks if a Parser is not Null.
+ *
+ * f : 'a list parser -> 'a list parser *)	
+fun not_null p =
+	(fn state =>
+		case p state of
+			FAILURE x => FAILURE x
+		  | SUCCESS (a, state') => 
+			case a of
+				[] => FAILURE ("Empty Result.", state')
+			  | _ => SUCCESS (a, state'))
+
+(* Consumes characters until f a is false.
+ *
+ * f : (char -> bool) -> char list parser *)
+fun spanP f =
+	let
+		(* Helper to match a single character satisfying predicate f *)
+		fun satisfyP f = 
+			(fn {
+				 input = s, 
+				 full_input = fi, 
+				 line_index = li, 
+				 pos = (line, column)
+			 } =>
+				if String.size s < 1
+				then 
+					FAILURE ("Unexpected end of input", 
+							  {
+								input = s, 
+								full_input = fi, 
+								line_index = li, 
+								pos = (line, column)
+							  })
+				else
+					let
+						val (c, rest) = (String.sub(s, 0), 
+										 String.extract(s, 1, NONE))
+						val newPos = if c = #"\n" 
+									 then (line + 1, 0) 
+									 else (line, column + 1)
+					in
+						if f c
+						then SUCCESS (c, 
+									  {
+										input = rest, 
+										full_input = fi, 
+										line_index = li, 
+										pos = newPos
+									  })
+						else FAILURE ("Character doesn't satisfy predicate", 
+									  {
+										input = s, 
+										full_input = fi, 
+										line_index = li, 
+										pos = (line, column)
+									  })
+					end)
+	in
+		many (satisfyP f)
+	end
+
+(* Parses a natural number x >= 0.
+ *
+ * f : int parser *)	
+val natP =
+	(fn state =>
+		let
+			fun digitsToInt ds =
+				foldl (fn (d, acc) => acc * 10 + (ord d - ord #"0")) 0 ds
+		in
+			((not_null (spanP Char.isDigit)) <$> digitsToInt) state 
+			handle overflow => FAILURE ("Integer Overflow.", state)
+		end)
 
 end
