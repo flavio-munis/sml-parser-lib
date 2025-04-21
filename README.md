@@ -19,4 +19,4 @@ This repo is heavily inspired by [this video](https://www.youtube.com/watch?v=N9
 - [ ] Add/Remove/Update Values from Json Tree
 - [ ] Parser for Double Values
 - [ ] Parser for Escape Characters
-- [ ] Error Tracking
+- [x] Error Tracking
