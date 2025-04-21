@@ -46,6 +46,7 @@ sig
 	
 	val empty : unit -> 'a t
 	val <|>   : 'a t * 'a t -> 'a t
+	val <||>  : 'a t * 'a t -> 'a t (* Better Choice Between 'a t's*)
 end
 
 signature MONAD_SIG =

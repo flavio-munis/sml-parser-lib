@@ -27,7 +27,7 @@ infix 1 >=>
 infix 1 >>=
 
 (* ALTERNATIVE_SIG Operators *)
-infix 1 <|>
+infix 1 <|> <||>
 
 
 (* ALTERNATIVE_SIG Operators *)
@@ -44,6 +44,8 @@ fun op <|> (opt1, opt2) =
 	case opt1 of
 		NONE   => opt2
 	  | SOME _ => opt1
+
+fun op <||> (opt1, opt2) = opt1 <|> opt2 
 
 
 (* FUNCTOR_SIG Definitions *)
