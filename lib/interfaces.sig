@@ -44,7 +44,7 @@ signature ALTERNATIVE_SIG =
 sig
 	include TYPE_SIG
 	
-	val empty : unit -> 'a t
+	val empty : 'a t
 	val <|>   : 'a t * 'a t -> 'a t
 	val <||>  : 'a t * 'a t -> 'a t (* Better Choice Between 'a t's*)
 end

@@ -35,7 +35,7 @@ infix 1 <|> <||>
 (* Empty value in a type t context.
  *
  * f : unit -> 'a option *)
-fun empty () = NONE
+val empty = NONE
 
 (* Or operator for comparing two values of type 'a t.
  *
