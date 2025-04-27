@@ -1,5 +1,8 @@
 signature JSONPARSER_SIG =
 sig
+	
+	type 'a parser
+
 	datatype JsonValue = JsonNull
 		   | JsonBool of bool
 		   | JsonNumber of int
@@ -12,12 +15,15 @@ sig
 	val read_file    : string -> TextIO.vector
 end
 
-structure JsonParser :> JSONPARSER_SIG =
+structure JsonParser : JSONPARSER_SIG =
 struct
 local
 	open Parser
 in
 
+type 'a t = 'a parser
+type 'a parser = 'a parser
+ 
 (* Infix Operators Orders *)
 (* FUNCTOR_SIG Operators *)
 infix 2 <$> <$ $>
@@ -97,18 +103,7 @@ val ws = spanP Char.isSpace
 (* Parser for removing spaces between commas 
  *
  * f : char parser *)
-val sep_comma = withErrorMsg "Expected ',' separator." (ws *> (charP #",") <* ws)
-
-(* aux function 
- *
- * f : 'a -> 'a list -> 'a list *)
-fun append x y = x::y
-
-(* Getting JsonValues that are separated by a commom character.
- *
- * f : 'a parser -> 'b parser -> 'b list parser *)
-fun sepBy sep element = 
-	(element <$> append <*> (many (sep *> element))) <||> pure [] 
+val sep_comma = withErrorMsg "Expected ',' separator." (ws *> charP #"," <* ws)
 
 
 (* Return a recursive array parser.
@@ -119,7 +114,7 @@ fun jsonArray self =
 		val elements = sepBy sep_comma self
 		val close_bracket = withErrorMsg "Expected ']' to close array." (charP #"]")
 	in
-		(charP #"[" *> ws *> elements <* ws <* close_bracket) <$> (fn x => JsonArray x)
+		((((charP #"[" *> ws) *> elements) <* ws) <* close_bracket) <$> (fn x => JsonArray x)
 	end
 
 (* Return a recursive object parser.
@@ -129,22 +124,25 @@ fun jsonObject self =
 	let
 		fun make_pair x y = (implode x, y)
 
-		val pair = withErrorMsg "Expected property name: value pair"
-								(liftA2 make_pair 
-										(stringLiteral 
-											 <* ws <* 
-											 (charP #":")
-											 <* ws)
-										self)
+		val key = withErrorMsg "Invalid Key" (stringLiteral 
+											  <* ws <* 
+											  (charP #":")
+											  <* ws)							   
+
 		val close_braces = withErrorMsg "Expected '}' to close Object."
 										(charP #"}")
+
+		val pair = liftA2 make_pair key self
 										
+		val obj = withErrorMsg "Invalid Object." 
+								(ws *> charP #"{" 
+									*> ws *> (sepBy sep_comma pair))
 	in
-		((charP #"{") 
-		*> ws *>
-		(sepBy sep_comma pair)
-		<* ws <*
-		close_braces) <$> (fn x => JsonObject x)
+		(
+		  obj
+		  <* ws <*
+		  close_braces
+		) <$> (fn x => JsonObject x)
 	end
 
 
@@ -161,8 +159,9 @@ val non_recursive =
  * f : JsonValue parser *)
 val recursive =
 	let
+		val generic_error = withErrorMsg "Expected TRUE, FALSE, NUMBER, STRING, '[' or '{'" empty
 		fun p input =
-			(ws *> ((jsonObject p) <||> (jsonArray p) <||> non_recursive) <* ws) input
+			(ws *> ((jsonObject p) <||> (jsonArray p) <||> non_recursive <||> generic_error) <* ws) input
 	in
 		p
 	end
@@ -171,13 +170,12 @@ val recursive =
 fun all_input p =
 	(fn state : parser_state =>
 		case p state of
-			SUCCESS (result, state' : parser_state) =>
-			if String.size (#input state') = 0 then
-				SUCCESS (result, state')
-			else
-				FAILURE ("Unexpected content", state')
-		  | FAILURE x => FAILURE x)
-
+			FAILURE x => FAILURE x
+		  | SUCCESS (result, state' : parser_state) => 
+			if String.size (#input state') = 0 
+			then SUCCESS (result, state')
+			else FAILURE ("Unexpected content", state'))
+		
 (* Function exposed by the sig.
  *
  * f : JsonValue parser *)

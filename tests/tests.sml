@@ -103,7 +103,7 @@ struct
     (* Tests for ALTERNATIVE_SIG functions *)
     val alternative_tests = [
         ("empty", fn () => 
-            assertEqual(empty (), NONE)),
+            assertEqual(empty, NONE)),
         ("<|> with first SOME", fn () => 
             assertEqual((SOME 5) <|> (SOME 10), SOME 5)),
         ("<|> with first NONE", fn () => 
@@ -265,7 +265,7 @@ struct
     (* Alternative Tests *)
     val alternative_tests = [
         ("empty always fails", fn () => 
-            check_parser_failure (empty ()) "abc"),
+            check_parser_failure empty "abc"),
         ("<|> takes first success", fn () => 
             check_parser ((charP #"x") <|> (charP #"a")) "abc" #"a" "bc"),
         ("<|> skips failures", fn () => 

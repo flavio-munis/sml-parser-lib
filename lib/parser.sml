@@ -13,12 +13,16 @@ sig
 	
 	type 'a parser = parser_state -> 'a parser_result
 
+	(*val <<*          : 'a parser * 'b parser -> 'a parser
+	val *>>          : 'a parser * 'b parser -> 'b parser*)
+
 	val run_parser   : 'a parser -> string -> 'a parser_result
 	val charP        : char ->  char parser
 	val stringP      : string -> char list parser
 	val not_null     : 'a list parser -> 'a list parser
 	val spanP        : (char -> bool) -> char list parser
 	val natP         : int parser
+	val sepBy        : 'a parser -> 'b parser -> 'b list parser
 end
 
 structure Parser : PARSER_SIG =
@@ -228,6 +232,7 @@ fun leftsq p1 p2 =
 	
 fun op <* (p1, p2) = leftsq p1 p2
 
+
 (* Ignores the right value.
  *
  * f : 'a parser ->/* 'b parser -> 'b parser *)
@@ -238,7 +243,6 @@ fun rightsq p1 p2 =
 		  | SUCCESS (_, state') => p2 state')
 
 fun op *> (p1, p2) = rightsq p1 p2
-
 
 
 (* Elevate a function f to a context and apply both elements.
@@ -252,6 +256,7 @@ fun liftA2 f p1 p2 = apply (apply (pure f) p1) p2
  * f : 'a parser -> ('a -> b' parser) -> 'b parser *)
 fun append x y = x::y
 
+
 (* Turns a type inside out.
  *
  * f : 'a parser list -> 'a list parser *)
@@ -260,21 +265,38 @@ fun sequenceA ps =
 		[] => pure []
 	  | x::xs' => x <$> append <*> (sequenceA xs')
 
-(* Matches type t zero or more times creating a list.
+
+(* Attempt to run a parser p and return FAILURE if the input fails and parttialy consumed.
+ *
+ * f : 'a parser -> 'a option parser_result *)
+fun attempt p =
+  (fn state : parser_state =>
+      case p state of
+		  SUCCESS (x, state') => SUCCESS (SOME x, state')
+		| FAILURE (msg, state') =>
+          let
+			  val consumed =
+				  String.size (#input state) - String.size (#input state')
+          in
+			  if consumed = 0 
+			  then SUCCESS (NONE, state')
+			  else FAILURE (msg, state')
+          end)
+
+
+(* Matches type t zero or more times creating a list. Fails if p consumes partial input on a element.
  *
  * f : 'a parser -> 'a list parser *)
 fun many p =
-    let 
-        fun step state =
-            case p state of
-                FAILURE _ => SUCCESS ([], state)
-              | SUCCESS (x, state') =>
-                (case step state' of
-                    FAILURE _ => SUCCESS ([x], state')
-                  | SUCCESS (xs, state'') => SUCCESS (x::xs, state''))
-    in
-        step
-    end
+  (fn state =>
+      case attempt p state of
+		  SUCCESS (SOME v, state') =>
+          (case many p state' of
+			   SUCCESS (vs, state'') => SUCCESS (v :: vs, state'')
+			 | FAILURE err => FAILURE err)
+		| SUCCESS (NONE, state') => SUCCESS ([], state')
+		| FAILURE err => FAILURE err)
+
 
 (* Matches type t one or more times creating a list.
  *
@@ -286,8 +308,8 @@ fun some p = p <$> append <*> many p
 
 (* Empty value in a type t context.
  *
- * f : unit -> 'a parser *)
-fun empty () = (fn state => FAILURE ("", state))
+ * f : 'a parser *)
+val empty = (fn state => FAILURE ("", state))
 
 (* Or operator for comparing two values of type 'a t.
  *
@@ -446,5 +468,19 @@ val natP =
 			((not_null (spanP Char.isDigit)) <$> digitsToInt) state 
 			handle overflow => FAILURE ("Integer Overflow.", state)
 		end)
+
+
+(* Parsers n 'b type separated by a 'a separator. All elements must be of type 'b or else will return FAILURE.
+ *
+ * f : 'a parser -> 'b parser -> 'b list parser *)
+fun sepBy sep element =
+  (fn state =>
+      case attempt element state of
+		  SUCCESS (SOME v, state') =>
+          (case many (sep *> element) state' of
+			   SUCCESS (vs, state'') => SUCCESS (v::vs, state'')
+			 | FAILURE err => FAILURE err)
+		| SUCCESS (NONE, state') => SUCCESS ([], state')
+		| FAILURE err => FAILURE err)
 
 end
