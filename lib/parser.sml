@@ -128,8 +128,8 @@ fun error_msg msg {input = _,
 	let
 		
 		(* Default Header for error*)
-		val loc_msg = "Error on line " ^ (Int.toString line) ^ 
-	", column " ^ (Int.toString column) ^ ":\n"
+		val loc_msg = "Error on line " ^ (Int.toString (line + 1)) ^ 
+	", column " ^ (Int.toString (column + 1)) ^ ":\n"
 								
 		(* Get the lower and upper bound of the line in which the error ocurred *)
 		val error_btw = get_line_index li line
@@ -340,10 +340,9 @@ fun op <||> (p1, p2) =
 					  String.size 
 						  (#full_input state) - String.size (#input state2)
             in
-              if consumed1 > consumed2 then
-                FAILURE (msg1, state1)
-              else
-                FAILURE (msg2, state2)
+              if consumed1 > consumed2 
+			  then FAILURE (msg1, state1)
+              else FAILURE (msg2, state2)
             end)
 
 
@@ -484,3 +483,17 @@ fun sepBy sep element =
 		| FAILURE err => FAILURE err)
 
 end
+
+(*
+
+fun aux v =
+case v of
+(JsonObject fields) => 
+let
+fun find (a, b) = if a = "name" then true else false
+in
+List.find find fields
+end
+| _ => NONE;
+
+*)
