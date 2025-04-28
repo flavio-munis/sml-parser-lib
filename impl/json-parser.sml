@@ -76,7 +76,7 @@ val jsonBool =
 (* Parser for natural numbers
  *
  * f : JsonValue parser *)
-val jsonNumber = withErrorMsg "Expected Natural Number" (natP <$> (fn n => JsonNumber n))
+val jsonNumber = withErrorMsg "Expected Natural Number" (natP <$> JsonNumber)
 
 
 (* Parser for strings encapsulated by double quotes \"...\"
@@ -84,9 +84,19 @@ val jsonNumber = withErrorMsg "Expected Natural Number" (natP <$> (fn n => JsonN
  * f : char list parser *)
 val stringLiteral = 
 	let
-		val close_quote = withErrorMsg "Unclosed Bracket \"" ((charP #"\""))
+		val close_quote = withErrorMsg "Unclosed Quote \"" ((charP #"\""))
+		val normal_char = (parse_if (fn c => c <> #"\"" andalso c <> #"\\"))
+		val escape_char = 
+			(#"\"" <$ stringP "\\\"") <|>
+			(#"\\" <$ stringP "\\\\") <|>
+			(#"/" <$ stringP "\\/")   <|>	  
+			(#"\b" <$ stringP "\\b")  <|>
+			(#"\f" <$ stringP "\\f")  <|>
+			(#"\n" <$ stringP "\\n")  <|>
+			(#"\r" <$ stringP "\\r")  <|>
+			(#"\t" <$ stringP "\\t")
 	in 
-		(charP #"\"") *> (spanP (fn c => c <> #"\"")) <* close_quote
+		(charP #"\"") *> many (normal_char <|> escape_char) <* close_quote
 	end
 
 
@@ -114,7 +124,7 @@ fun jsonArray self =
 		val elements = sepBy sep_comma self
 		val close_bracket = withErrorMsg "Expected ']' to close array." (charP #"]")
 	in
-		((((charP #"[" *> ws) *> elements) <* ws) <* close_bracket) <$> (fn x => JsonArray x)
+		(charP #"[" *> ws *> elements <* ws <* close_bracket) <$> JsonArray
 	end
 
 (* Return a recursive object parser.
@@ -142,7 +152,7 @@ fun jsonObject self =
 		  obj
 		  <* ws <*
 		  close_braces
-		) <$> (fn x => JsonObject x)
+		) <$> JsonObject
 	end
 
 
