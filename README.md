@@ -15,8 +15,8 @@ Implements a fully functional Json Parser using the `parser.sml` functions.
 This repo is heavily inspired by [this video](https://www.youtube.com/watch?v=N9RUqGYuGfw) from [tsoding](https://github.com/tsoding).
 
 ## 📝 **To Do**
-- [ ] Save Json Tree in a File
 - [ ] Add/Remove/Update Values from Json Tree
 - [ ] Parser for Double Values
-- [ ] Parser for Escape Characters
+- [x] Write Json To File
+- [x] Parser for Escape Characters
 - [x] Error Tracking
