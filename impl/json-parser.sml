@@ -10,9 +10,10 @@ sig
 		   | JsonArray of JsonValue list
 		   | JsonObject of (string * JsonValue) list
 
-	val parseJson    : JsonValue Parser.parser
-	val jsonToString : JsonValue -> string
-	val read_file    : string -> TextIO.vector
+	val parse_json     : string -> JsonValue
+	val json_to_string : JsonValue -> string
+	val read_file      : string -> TextIO.vector
+	val write_to_file  : string -> string -> unit
 end
 
 structure JsonParser : JSONPARSER_SIG =
@@ -78,6 +79,61 @@ val jsonBool =
  * f : JsonValue parser *)
 val jsonNumber = withErrorMsg "Expected Natural Number" (natP <$> JsonNumber)
 
+(* Transform a word into it's utf-8 form.
+ *
+ * f :  word -> char list *)
+fun utf8_encode cp =
+	let
+		fun w i = Word.fromInt i
+		fun i w = Word.toInt w
+	in
+		if cp < (w 0x80) then
+			[chr (i cp)]
+		else if cp < (w 0x800) then
+			[ chr (i ((w 0xC0) + (Word.>> (cp, w 6)))),
+			  chr (i ((w 0x80) + (Word.andb (cp, w 0x3F)))) ]
+		else if cp < (w 0x10000) then
+			[ chr (i ((w 0xE0) + (Word.>> (cp, w 12)))),
+			  chr (i ((w 0x80) + (Word.andb (Word.>> (cp, w 6), w 0x3F)))),
+			  chr (i ((w 0x80) + (Word.andb (cp, w 0x3F)))) ]
+		else if cp <= (w 0x10FFFF) then
+			[ chr (i ((w 0xF0) + Word.>> (cp, w 18))),
+			  chr (i ((w 0x80) + (Word.andb (Word.>> (cp, w 12), w 0x3F)))),
+			  chr (i ((w 0x80) + (Word.andb (Word.>> (cp, w 6), w 0x3F)))),
+			  chr (i ((w 0x80) + (Word.andb (cp, w 0x3F)))) ]
+			
+	else
+		raise Fail ("utf8_encode: codepoint out of range: " ^ Int.toString (i cp))
+	end
+
+
+
+(* Parse a unicode character of the form \\u0000 and return in utf-8 encode.
+ *
+ * f : char list parser *)
+val escape_unicode = 
+	let
+		(* Accumulate hex values until the final result *)
+		fun aux (d, acc) =
+			let
+				val d_ord = ord d
+				val d_value = 
+					if d_ord >= 48 andalso d_ord <= 57
+					then d_ord - ord #"0"
+					else 
+						if d_ord >= 65 andalso d_ord <= 70
+						then d_ord - ord #"A" + 10
+						else d_ord - ord #"a" + 10
+			in
+				acc * 16 + d_value
+			end
+				
+		fun digits_to_word ds =
+			Word.fromInt (foldl aux 0 ds)
+	in
+		(sequenceA (replicate 4 (parse_if Char.isHexDigit))) <$> (utf8_encode o digits_to_word)
+						
+	end
 
 (* Parser for strings encapsulated by double quotes \"...\"
  *
@@ -85,18 +141,22 @@ val jsonNumber = withErrorMsg "Expected Natural Number" (natP <$> JsonNumber)
 val stringLiteral = 
 	let
 		val close_quote = withErrorMsg "Unclosed Quote \"" ((charP #"\""))
-		val normal_char = (parse_if (fn c => c <> #"\"" andalso c <> #"\\"))
+		val normal_char = 
+			(parse_if (fn c => c <> #"\"" andalso c <> #"\\")) <$> (fn c => [c])
 		val escape_char = 
-			(#"\"" <$ stringP "\\\"") <|>
-			(#"\\" <$ stringP "\\\\") <|>
-			(#"/" <$ stringP "\\/")   <|>	  
-			(#"\b" <$ stringP "\\b")  <|>
-			(#"\f" <$ stringP "\\f")  <|>
-			(#"\n" <$ stringP "\\n")  <|>
-			(#"\r" <$ stringP "\\r")  <|>
-			(#"\t" <$ stringP "\\t")
+			([#"\""] <$ stringP "\\\"") <|>
+			([#"\\"] <$ stringP "\\\\") <|>
+			([#"/"]  <$ stringP "\\/")  <|>	  
+			([#"\b"] <$ stringP "\\b")  <|>
+			([#"\f"] <$ stringP "\\f")  <|>
+			([#"\n"] <$ stringP "\\n")  <|>
+			([#"\r"] <$ stringP "\\r")  <|>
+			([#"\t"] <$ stringP "\\t")  <|>
+			(stringP "\\u" *> escape_unicode)
 	in 
-		(charP #"\"") *> many (normal_char <|> escape_char) <* close_quote
+		(charP #"\"") *> 
+		(many (normal_char <|> escape_char) <$> List.concat)
+		<* close_quote
 	end
 
 
@@ -188,32 +248,46 @@ fun all_input p =
 		
 (* Function exposed by the sig.
  *
- * f : JsonValue parser *)
-val parseJson = all_input recursive
+ * f : string -> JsonValue *)
+fun parse_json s = 
+	case run_parser (all_input recursive) s of
+		FAILURE _ => JsonObject []
+	  | SUCCESS (res, state) => res
 
 (* Convert a JsonValue to String.
  *
  * f : JsonValue -> string *)
-fun jsonToString (JsonObject fields) =
-    "{" ^ String.concatWith ", " (List.map (fn (k, v) => "\"" ^ k ^ "\": " ^ jsonToString v) fields) ^ "}"
-  | jsonToString (JsonArray elems) =
-    "[" ^ String.concatWith ", " (List.map jsonToString elems) ^ "]"
-  | jsonToString (JsonString s) = "\"" ^ s ^ "\""
-  | jsonToString (JsonNumber n) = Int.toString n
-  | jsonToString (JsonBool true) = "true"
-  | jsonToString (JsonBool false) = "false"
-  | jsonToString JsonNull = "null"
+fun json_to_string (JsonObject fields) =
+    "{" ^ String.concatWith ", " (List.map (fn (k, v) => "\"" ^ k ^ "\": " ^ json_to_string v) fields) ^ "}"
+  | json_to_string (JsonArray elems) =
+    "[" ^ String.concatWith ", " (List.map json_to_string elems) ^ "]"
+  | json_to_string (JsonString s) = "\"" ^ s ^ "\""
+  | json_to_string (JsonNumber n) = Int.toString n
+  | json_to_string (JsonBool true) = "true"
+  | json_to_string (JsonBool false) = "false"
+  | json_to_string JsonNull = "null"
 
 (* Reads a file and returns it's content.
  *
  * f : string -> TextIO.vector *)
-fun read_file filename =
+fun read_file path =
     let
-        val instream = TextIO.openIn filename
+        val instream = TextIO.openIn path
         val content = TextIO.inputAll instream
         val _ = TextIO.closeIn instream
     in
         content
+    end
+
+(* Write a String to a File.
+ *
+ * f : string -> string -> unit *)
+fun write_to_file text path =
+	let
+        val outstream = TextIO.openOut path
+    in
+        TextIO.output (outstream, text);
+        TextIO.closeOut outstream
     end
 
 end

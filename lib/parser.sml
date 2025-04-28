@@ -23,7 +23,9 @@ sig
 	val parse_if     : (char -> bool) -> char parser
 	val spanP        : (char -> bool) -> char list parser
 	val natP         : int parser
+	val hexP         : int parser
 	val sepBy        : 'a parser -> 'b parser -> 'b list parser
+	val replicate    : int -> 'a parser -> 'a parser list
 end
 
 structure Parser : PARSER_SIG =
@@ -349,6 +351,17 @@ fun op <||> (p1, p2) =
 
 (* Parser Structure Functions*)
 
+(* Creates a list of length n of an 'a parser.
+ *
+ * f : int -> 'a parser -> 'a parser list*)
+fun replicate n p =
+	if n < 1
+	then [empty]
+	else
+		if n = 1
+		then [p]
+		else p::(replicate (n- 1) p)
+
 (* Parsers a char c if f c is true.
  *
  * f : (char -> bool) -> char parser *)
@@ -427,6 +440,34 @@ val natP =
 				foldl (fn (d, acc) => acc * 10 + (ord d - ord #"0")) 0 ds
 		in
 			((not_null (spanP Char.isDigit)) <$> digitsToInt) state 
+			handle overflow => FAILURE ("Integer Overflow.", state)
+		end)
+
+(* Parses a Hexadecimal Number.
+ *
+ * f : int parser *)	
+val hexP =
+	(fn state =>
+		let
+			(* Accumulate hex values until the final result *)
+			fun aux (d, acc) =
+				let
+					val d_ord = ord d
+					val d_value = 
+						if d_ord >= 48 andalso d_ord <= 57
+						then d_ord - ord #"0"
+						else 
+							if d_ord >= 65 andalso d_ord <= 70
+							then d_ord - ord #"A" + 10
+							else d_ord - ord #"a" + 10
+				in
+					acc * 16 + d_value
+				end
+
+			fun digits_to_int ds =
+				foldl aux 0 ds
+		in
+			((not_null (spanP Char.isHexDigit)) <$> digits_to_int) state 
 			handle overflow => FAILURE ("Integer Overflow.", state)
 		end)
 
