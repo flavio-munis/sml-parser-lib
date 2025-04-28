@@ -20,6 +20,7 @@ sig
 	val charP        : char ->  char parser
 	val stringP      : string -> char list parser
 	val not_null     : 'a list parser -> 'a list parser
+	val parse_if     : (char -> bool) -> char parser
 	val spanP        : (char -> bool) -> char list parser
 	val natP         : int parser
 	val sepBy        : 'a parser -> 'b parser -> 'b list parser
@@ -346,37 +347,43 @@ fun op <||> (p1, p2) =
             end)
 
 
-(* Creates a closure for parsing the char c.
+(* Parser Structure Functions*)
+
+(* Parsers a char c if f c is true.
  *
- * f : char -> char parser *)
-fun charP c = 
-	(fn { input = s, 
-		  full_input = fi,
-		  line_index = li,
-		  pos = (line, column)
-		} =>
-		if String.size s < 1
-		then FAILURE ("Empty String", { input = s, 
-										full_input = fi,
-										line_index = li,
-										pos = (line, column)
-					 })
+ * f : (char -> bool) -> char parser *)
+fun parse_if f =
+	(fn state : parser_state =>
+		if String.size (#input state) < 1
+		then FAILURE ("Empty String.", state)
 		else
 			let
-				val state =  {input = s, 
-							  full_input = fi,
-							  line_index = li,
-							  pos = (line, column)}
+				val (line, column) = #pos state
 
-				val (s', xs) = (String.sub(s, 0), String.extract(s, 1, NONE))
+				val s = #input state
+				val (c, rest) = (String.sub(s, 0), 
+								 String.extract(s, 1, NONE))
+
+				val newPos = if c = #"\n" 
+							 then (line + 1, 0) 
+							 else (line, column + 1)
 			in
-				if s' = c
-				then 
-					if s' = #"\n"
-					then SUCCESS (c, {input = xs, pos = (line + 1, 0), full_input=fi, line_index = li})
-					else SUCCESS (c, {input = xs, pos = (line, column + 1), full_input=fi, line_index = li})
-				else FAILURE ("Expected " ^ (Char.toString c) ^ ", But Got " ^ (Char.toString s'), state)
+				if not (f c)
+				then FAILURE ("Invalid Character.", state)
+				else 
+					SUCCESS (c, {
+								input = rest,
+								full_input = #full_input state,
+								line_index = #line_index state,
+								pos = newPos
+							})
 			end)
+
+(* Wrapper for Parse If Function.
+ *
+ * f : char -> char parser *)
+fun charP c = parse_if (fn c' => c' = c)
+
 
 (* Parse a sequence of char.
  *
@@ -408,52 +415,7 @@ fun not_null p =
 (* Consumes characters until f a is false.
  *
  * f : (char -> bool) -> char list parser *)
-fun spanP f =
-	let
-		(* Helper to match a single character satisfying predicate f *)
-		fun satisfyP f = 
-			(fn {
-				 input = s, 
-				 full_input = fi, 
-				 line_index = li, 
-				 pos = (line, column)
-			 } =>
-				if String.size s < 1
-				then 
-					FAILURE ("Unexpected end of input", 
-							  {
-								input = s, 
-								full_input = fi, 
-								line_index = li, 
-								pos = (line, column)
-							  })
-				else
-					let
-						val (c, rest) = (String.sub(s, 0), 
-										 String.extract(s, 1, NONE))
-						val newPos = if c = #"\n" 
-									 then (line + 1, 0) 
-									 else (line, column + 1)
-					in
-						if f c
-						then SUCCESS (c, 
-									  {
-										input = rest, 
-										full_input = fi, 
-										line_index = li, 
-										pos = newPos
-									  })
-						else FAILURE ("Character doesn't satisfy predicate", 
-									  {
-										input = s, 
-										full_input = fi, 
-										line_index = li, 
-										pos = (line, column)
-									  })
-					end)
-	in
-		many (satisfyP f)
-	end
+fun spanP f = many (parse_if f)
 
 (* Parses a natural number x >= 0.
  *
