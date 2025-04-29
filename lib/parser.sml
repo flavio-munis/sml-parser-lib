@@ -13,19 +13,23 @@ sig
 	
 	type 'a parser = parser_state -> 'a parser_result
 
-	(*val <<*          : 'a parser * 'b parser -> 'a parser
-	val *>>          : 'a parser * 'b parser -> 'b parser*)
-
+	(* Run a Parser With Error Tracking *)
 	val run_parser   : 'a parser -> string -> 'a parser_result
+	
+	(* Char and String Parsers *)
 	val charP        : char ->  char parser
 	val stringP      : string -> char list parser
-	val not_null     : 'a list parser -> 'a list parser
 	val parse_if     : (char -> bool) -> char parser
 	val spanP        : (char -> bool) -> char list parser
+	
+	(* Parsing Numbers *)
 	val natP         : int parser
 	val intP         : int parser
 	val doubleP      : real parser
 	val hexP         : int parser
+
+	(* Auxialiary Functions*)
+	val not_null     : 'a list parser -> 'a list parser
 	val sepBy        : 'a parser -> 'b parser -> 'b list parser
 	val replicate    : int -> 'a parser -> 'a parser list
 end
@@ -126,7 +130,7 @@ fun get_caret_line upper lower s column =
 (* Returns a complete error message with the line, column, a window of characters pointing to the exact location fo the error in the string, and a custum error message from the parser.
  *
  * f : string -> parser_state -> string *)
-fun error_msg msg {input = _, 
+fun error_msg msg {input = s, 
 				   full_input = fi, 
 				   line_index = li, 
 				   pos = (line, column)} =
@@ -145,8 +149,9 @@ fun error_msg msg {input = _,
 			  | _ => (0, 0) (* Should Never Happen *) 
 
 		val caret_line = get_caret_line upper lower fi column
+		val state_string = "Parser Current input: " ^ s ^ "\n"
 	in
-		loc_msg ^ caret_line ^ "\n" ^ msg ^ "\n\n"
+		loc_msg ^ caret_line ^ "\n" ^ msg ^ "\n\n" ^ state_string ^ "\n"
 	end
 
 (* Run a 'a parser p with the string s.
