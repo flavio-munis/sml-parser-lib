@@ -23,6 +23,8 @@ sig
 	val parse_if     : (char -> bool) -> char parser
 	val spanP        : (char -> bool) -> char list parser
 	val natP         : int parser
+	val intP         : int parser
+	val doubleP      : real parser
 	val hexP         : int parser
 	val sepBy        : 'a parser -> 'b parser -> 'b list parser
 	val replicate    : int -> 'a parser -> 'a parser list
@@ -434,14 +436,57 @@ fun spanP f = many (parse_if f)
  *
  * f : int parser *)	
 val natP =
-	(fn state =>
-		let
-			fun digitsToInt ds =
-				foldl (fn (d, acc) => acc * 10 + (ord d - ord #"0")) 0 ds
-		in
-			((not_null (spanP Char.isDigit)) <$> digitsToInt) state 
-			handle overflow => FAILURE ("Integer Overflow.", state)
-		end)
+	let
+		val digits_to_int = valOf o Int.fromString o implode
+						
+		val digits = some (parse_if Char.isDigit)
+		fun nat state = (digits <$> digits_to_int) 
+							state
+							handle overflow => FAILURE ("Integer Overflow.", state)
+	in
+		nat
+	end
+
+(* Parse a integer value x ∈ Z.
+ *
+ * f : int parser *)
+val intP = 
+	let
+		val sign = ((~1) <$ charP #"-") <|> (pure 1)
+		fun compose_int sign n = n * sign;
+	in
+		sign <$> compose_int (* (int -> int) parser *) 
+			 <*> natP        (* int parser *)
+	end
+
+
+(* Parse a fp in all of it legal forms.
+ *
+ * f : real parser *)
+val doubleP =
+	let
+		val digits = some (parse_if Char.isDigit)
+		val digits_to_Real = valOf o Real.fromString o implode
+
+		(* Append all parts of a real string together and converto to real value
+		 * 
+		 * f : char list -> char list -> char list -> char list -> real*)
+		fun aux sign n dec exp = 
+			digits_to_Real (List.concat (sign::n::dec::exp::[]))
+
+		val sign_char = charP #"-" <|> charP #"+" <|> (pure #"+")
+		val sign = (sign_char <$> append <*> (pure [])) <|> (pure [])
+		val dec = (charP #"." <$> append <*> digits) <|> (pure [])
+		
+		val e = charP #"e" <|> charP #"E"
+		val exp = (e <$> append <*> (sign_char <$> append <*> digits)) <|> (pure []) 
+	in
+		sign <$> aux
+			 <*> digits
+			 <*> dec
+			 <*> exp
+	end
+
 
 (* Parses a Hexadecimal Number.
  *
@@ -470,7 +515,6 @@ val hexP =
 			((not_null (spanP Char.isHexDigit)) <$> digits_to_int) state 
 			handle overflow => FAILURE ("Integer Overflow.", state)
 		end)
-
 
 (* Parsers n 'b type separated by a 'a separator. All elements must be of type 'b or else will return FAILURE.
  *
