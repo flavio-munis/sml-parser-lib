@@ -1,19 +1,18 @@
 signature JSONPARSER_SIG =
 sig
-	
-	type 'a parser
 
 	datatype JsonValue = JsonNull
-		   | JsonBool of bool
-		   | JsonNumber of int
-		   | JsonString of string
-		   | JsonArray of JsonValue list
-		   | JsonObject of (string * JsonValue) list
+					   | JsonBool of bool
+					   | JsonNumber of real
+					   | JsonString of string
+					   | JsonArray of JsonValue list
+					   | JsonObject of (string * JsonValue) list
 
-	val parse_json     : string -> JsonValue
-	val json_to_string : JsonValue -> string
-	val read_file      : string -> TextIO.vector
-	val write_to_file  : string -> string -> unit
+	val parse_json    : string -> JsonValue
+	val prettify      : JsonValue -> string
+	val minify        : JsonValue -> string
+	val read_file     : string -> TextIO.vector
+	val write_to_file : string -> string -> unit
 end
 
 structure JsonParser : JSONPARSER_SIG =
@@ -39,11 +38,11 @@ infix 1 >=> >>=
 infix 1 <|> <||>
 
 datatype JsonValue = JsonNull
-		   | JsonBool of bool
-		   | JsonNumber of int
-		   | JsonString of string
-		   | JsonArray of JsonValue list
-		   | JsonObject of (string * JsonValue) list
+				   | JsonBool of bool
+				   | JsonNumber of real
+				   | JsonString of string
+				   | JsonArray of JsonValue list
+				   | JsonObject of (string * JsonValue) list
 
 
 (* Helper function to provide better error messages
@@ -74,10 +73,10 @@ val jsonBool =
 	end
 
 
-(* Parser for natural numbers
+(* Parser for numbers.
  *
  * f : JsonValue parser *)
-val jsonNumber = withErrorMsg "Expected Natural Number" (natP <$> JsonNumber)
+val jsonNumber = withErrorMsg "Invalid Number" (doubleP <$> JsonNumber)
 
 (* Transform a word into it's utf-8 form.
  *
@@ -254,18 +253,63 @@ fun parse_json s =
 		FAILURE _ => JsonObject []
 	  | SUCCESS (res, state) => res
 
-(* Convert a JsonValue to String.
+
+(* Transform a JsonValue to String and Prettify it.
  *
- * f : JsonValue -> string *)
-fun json_to_string (JsonObject fields) =
-    "{" ^ String.concatWith ", " (List.map (fn (k, v) => "\"" ^ k ^ "\": " ^ json_to_string v) fields) ^ "}"
-  | json_to_string (JsonArray elems) =
-    "[" ^ String.concatWith ", " (List.map json_to_string elems) ^ "]"
-  | json_to_string (JsonString s) = "\"" ^ s ^ "\""
-  | json_to_string (JsonNumber n) = Int.toString n
-  | json_to_string (JsonBool true) = "true"
-  | json_to_string (JsonBool false) = "false"
-  | json_to_string JsonNull = "null"
+ * f : JsonValue * int -> string *)
+fun to_string_prettify (json_v, level) =
+    let
+		(* Helper function to repeat a tab character for indentation 
+		 *
+		 * f : string -> string *)
+		fun indent n = String.concat (List.tabulate (n, fn _ => "\t"))
+
+        val ind = indent level
+        val ind_inner = indent (level + 1)
+    in
+        case json_v of
+            JsonObject fields =>
+                if null fields then "{}"
+                else "{\n"
+                    ^ String.concatWith ",\n" (List.map (fn (k, v) =>
+                        ind_inner ^ "\"" ^ k ^ "\": " ^ to_string_prettify (v, level + 1)
+                    ) fields)
+                    ^ "\n" ^ ind ^ "}"
+
+          | JsonArray elems =>
+                if null elems then "[]"
+                else "[\n"
+                    ^ String.concatWith ",\n" (List.map (fn e =>
+                        ind_inner ^ to_string_prettify (e, level + 1)
+                    ) elems)
+                    ^ "\n" ^ ind ^ "]"
+
+          | JsonString s => "\"" ^ s ^ "\""
+          | JsonNumber n =>
+                String.map (fn c => if c = #"~" then #"-" else c) (Real.toString n)
+          | JsonBool true => "true"
+          | JsonBool false => "false"
+          | JsonNull => "null"
+    end
+
+(* Returns a Prettified json string 
+ * 
+ * f : jsonValue -> string *)
+fun prettify json_v = to_string_prettify (json_v, 0)
+
+
+(* Transform a JsonValue to String and Prettify it.
+ *
+ * f : JsonValue * int -> string *)
+fun minify (JsonObject fields) =
+    "{" ^ String.concatWith "," (List.map (fn (k, v) => "\"" ^ k ^ "\":" ^ minify v) fields) ^ "}"
+  | minify (JsonArray elems) =
+    "[" ^ String.concatWith "," (List.map minify elems) ^ "]"
+  | minify (JsonString s) = "\"" ^ s ^ "\""
+  | minify (JsonNumber n) = Real.toString n
+  | minify (JsonBool true) = "true"
+  | minify (JsonBool false) = "false"
+  | minify JsonNull = "null"
 
 (* Reads a file and returns it's content.
  *
