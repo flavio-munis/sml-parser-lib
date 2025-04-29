@@ -254,6 +254,25 @@ fun parse_json s =
 	  | SUCCESS (res, state) => res
 
 
+(* Convert escaped characters in a string literal to it's original form.
+ *
+ * f : string -> string *)
+fun escape_string s =
+    let
+        fun escape #"\"" = "\\\""
+          | escape #"\\" = "\\\\"
+          | escape #"\b" = "\\b"
+          | escape #"\f" = "\\f" 
+          | escape #"\n" = "\\n"
+          | escape #"\r" = "\\r"
+          | escape #"\t" = "\\t"
+          | escape c = str c
+                
+        val chars = explode s
+    in
+        String.concat (map escape chars)
+    end
+
 (* Transform a JsonValue to String and Prettify it.
  *
  * f : JsonValue * int -> string *)
@@ -284,7 +303,7 @@ fun to_string_prettify (json_v, level) =
                     ) elems)
                     ^ "\n" ^ ind ^ "]"
 
-          | JsonString s => "\"" ^ s ^ "\""
+          | JsonString s => "\"" ^ escape_string s ^ "\""
           | JsonNumber n =>
                 String.map (fn c => if c = #"~" then #"-" else c) (Real.toString n)
           | JsonBool true => "true"
@@ -305,7 +324,7 @@ fun minify (JsonObject fields) =
     "{" ^ String.concatWith "," (List.map (fn (k, v) => "\"" ^ k ^ "\":" ^ minify v) fields) ^ "}"
   | minify (JsonArray elems) =
     "[" ^ String.concatWith "," (List.map minify elems) ^ "]"
-  | minify (JsonString s) = "\"" ^ s ^ "\""
+  | minify (JsonString s) = "\"" ^ (escape_string s) ^ "\""
   | minify (JsonNumber n) = Real.toString n
   | minify (JsonBool true) = "true"
   | minify (JsonBool false) = "false"
