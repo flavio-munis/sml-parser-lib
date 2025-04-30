@@ -220,6 +220,133 @@ struct
             check_parser_failure natP "")
     ]
 
+
+	val int_parser_tests = [
+        ("intP parses positive integer", fn () => 
+            check_parser intP "123abc" 123 "abc"),
+        ("intP parses negative integer", fn () => 
+            check_parser intP "-456def" ~456 "def"),
+        ("intP parses zero", fn () => 
+            check_parser intP "0xyz" 0 "xyz"),
+        ("intP fails on non-digit", fn () => 
+            check_parser_failure intP "abc123"),
+        ("intP fails on empty string", fn () =>
+            check_parser_failure intP ""),
+        ("intP handles sign without digits", fn () =>
+            check_parser_failure intP "-abc")
+    ]
+						   
+	(* Helper function to check real parser success with tolerance *)
+    fun check_parser_real parser input expected_result expected_rest =
+        let
+            val epsilon = 0.0000001  (* Tolerance for floating-point comparison *)
+            
+            fun real_equal (r1, r2) =
+                Real.abs (r1 - r2) < epsilon
+        in
+            case run_parser parser input of
+                SUCCESS (result, state) => 
+                    assertEqual ((real_equal(result, expected_result), 
+                                 String.size (#input state) = String.size expected_rest), 
+                                (true, true))
+              | FAILURE (msg, _) => 
+                    (print ("Parser failed with message: " ^ msg ^ "\n");
+                     assertEqual(true, false))
+        end
+
+    (* Helper function to test real parser failure *)
+    fun check_parser_failure_real parser input =
+        case run_parser parser input of
+            SUCCESS (_, _) => assertEqual(false, true)
+          | FAILURE (_, _) => assertEqual(true, true)
+
+    val double_parser_tests = [
+        ("doubleP parses simple real number", fn () => 
+            check_parser_real doubleP "123.45abc" 123.45 "abc"),
+        ("doubleP parses negative real number", fn () => 
+            check_parser_real doubleP "-67.89xyz" ~67.89 "xyz"),
+        ("doubleP parses real without decimal part", fn () => 
+            check_parser_real doubleP "42xyz" 42.0 "xyz"),
+        ("doubleP parses real with just decimal part", fn () => 
+            check_parser_real doubleP "0.5abc" 0.5 "abc"),
+        ("doubleP parses number with explicit positive sign", fn () => 
+            check_parser_real doubleP "+123.45xyz" 123.45 "xyz"),
+        ("doubleP parses scientific notation with positive exponent", fn () => 
+            check_parser_real doubleP "1.23e2abc" 123.0 "abc"),
+        ("doubleP parses scientific notation with negative exponent", fn () => 
+            check_parser_real doubleP "4.5e-2xyz" 0.045 "xyz"),
+        ("doubleP parses scientific notation with uppercase E", fn () => 
+            check_parser_real doubleP "6.7E3def" 6700.0 "def"),
+        ("doubleP parses scientific notation without decimal point", fn () => 
+            check_parser_real doubleP "8E4ghi" 80000.0 "ghi"),
+        ("doubleP fails on empty string", fn () =>
+            check_parser_failure_real doubleP ""),
+        ("doubleP fails with just decimal point", fn () =>
+            check_parser_failure_real doubleP ".123"),
+        ("doubleP fails with just a sign", fn () =>
+            check_parser_failure_real doubleP "-abc")
+    ]						   
+
+    val hex_parser_tests = [
+        ("hexP parses simple hex number", fn () => 
+            check_parser hexP "1A3def" 1719791 ""),
+        ("hexP parses hex number with 0x prefix", fn () => 
+            check_parser hexP "0x1F4abc" 2050748 ""),
+        ("hexP parses hex number with 0X prefix", fn () => 
+            check_parser hexP "0XFF5xyz" 4085 "xyz"),
+        ("hexP parses negative hex number", fn () => 
+            check_parser hexP "-AEghi" ~174 "ghi"),
+        ("hexP parses positive hex number with sign", fn () => 
+            check_parser hexP "+FFjkl" 255 "jkl"),
+        ("hexP handles lowercase hex digits", fn () => 
+            check_parser hexP "abcdef123" 46118400291 ""),
+        ("hexP handles uppercase hex digits", fn () => 
+            check_parser hexP "ABCDEF123" 46118400291 ""),
+        ("hexP fails on empty string", fn () =>
+            check_parser_failure hexP ""),
+        ("hexP fails with just 0x without digits", fn () =>
+            check_parser_failure hexP "0xghi")
+    ]
+
+    val bin_parser_tests = [
+        ("binP parses binary number", fn () => 
+            check_parser binP "1010abc" 10 "abc"),
+        ("binP parses negative binary number", fn () => 
+            check_parser binP "-1100xyz" ~12 "xyz"),
+        ("binP parses positive binary number with sign", fn () => 
+            check_parser binP "+101def" 5 "def"),
+        ("binP fails with non-binary digits", fn () =>
+            check_parser_failure binP "210"),
+        ("binP fails on empty string", fn () =>
+            check_parser_failure binP "")
+    ]
+
+    val sep_by_tests = [
+        ("sepBy with comma-separated numbers - multiple items", fn () =>
+            check_parser (sepBy (charP #",") natP) "1,2,3abc" [1,2,3] "abc"),
+        ("sepBy with comma-separated numbers - single item", fn () =>
+            check_parser (sepBy (charP #",") natP) "42xyz" [42] "xyz"),
+        ("sepBy with no matches", fn () =>
+            check_parser (sepBy (charP #",") natP) "abc" [] "abc"),
+        ("sepBy with empty string", fn () =>
+            check_parser (sepBy (charP #",") natP) "" [] ""),
+        ("sepBy with trailing separator", fn () =>
+            check_parser_failure
+				(sepBy (charP #",") natP) "1,2,3,"),
+        ("sepBy with complex separators", fn () =>
+            check_parser (sepBy (stringP ", ") natP) "1, 2, 3xyz" [1,2,3] "xyz")
+    ]
+
+    val all_input_tests = [
+        ("all_input succeeds with exact match", fn () =>
+            check_parser (all_input natP) "123" 123 ""),
+        ("all_input fails with remaining input", fn () =>
+            check_parser_failure (all_input natP) "123abc"),
+        ("all_input propagates parser errors", fn () =>
+            check_parser_failure (all_input natP) "abc")
+    ]
+
+
     (* Functor Tests *)
     val functor_tests = [
         ("fmap transforms parser result", fn () => 
@@ -292,6 +419,12 @@ struct
         SuiteLeaf("Not Null Tests", not_null_tests),
         SuiteLeaf("Span Parser Tests", span_parser_tests),
         SuiteLeaf("Natural Number Parser Tests", nat_parser_tests),
+		SuiteLeaf("Integer Parser Tests", int_parser_tests),
+        SuiteLeaf("Double Parser Tests", double_parser_tests),
+        SuiteLeaf("Hexadecimal Parser Tests", hex_parser_tests),
+        SuiteLeaf("Binary Parser Tests", bin_parser_tests),
+        SuiteLeaf("SepBy Parser Tests", sep_by_tests),
+        SuiteLeaf("All Input Parser Tests", all_input_tests),
         SuiteLeaf("Functor Tests", functor_tests),
         SuiteLeaf("Applicative Tests", applicative_tests),
         SuiteLeaf("Alternative Tests", alternative_tests),
@@ -302,39 +435,26 @@ end
 structure JsonParserTests =
 struct
     open Test
-    open Parser
     open JsonParser
 
-    (* Infix Operators Orders *)
-    (* FUNCTOR_SIG Operators *)
-    infix 2 <$> <$ $>
-
-    (* APPLICATIVE_SIG Operators *)
-    infix 1 <*> *> <*
-
-    (* ALTERNATIVE_SIG Operators *)
-    infix 1 <|> <||>
-
-    (* Helper function to run parser and check result *)
+    (* Helper function to check parse_json results *)
     fun check_json_parser input expected_json =
-        case run_parser parseJson input of
-            SUCCESS (result, state) => 
-                if String.size (#input state) = 0 then
-                    assertEqual(jsonToString result, jsonToString expected_json)
-                else
-                    (print "Parser did not consume all input\n";
-                     assertEqual(false, true))
-          | FAILURE (msg, _) => 
-                (print ("JSON parser failed with message: " ^ msg ^ "\n");
-                 assertEqual(false, true))
+        let
+            val result = parse_json input
+        in
+            assertEqual(minify result, minify expected_json)
+        end
 
-    (* Helper function to test json parser failure *)
+    (* Helper function to test json parser failure - returns empty object on failure *)
     fun check_json_parser_failure input =
-        case run_parser parseJson input of
-            SUCCESS (_, _) => assertEqual(false, true)
-          | FAILURE (_, _) => assertEqual(true, true)
+        let
+            val result = parse_json input
+        in
+            assertEqual(minify result, minify (JsonObject []))
+        end
 
-    val json_null_tests = [
+    (* Tests for parse_json function *)
+    val parse_json_null_tests = [
         ("Parse null value", fn () => 
             check_json_parser "null" JsonNull),
         ("Parse null with whitespace", fn () =>
@@ -343,7 +463,7 @@ struct
             check_json_parser_failure "nul")
     ]
 
-    val json_bool_tests = [
+    val parse_json_bool_tests = [
         ("Parse true value", fn () => 
             check_json_parser "true" (JsonBool true)),
         ("Parse false value", fn () => 
@@ -354,73 +474,81 @@ struct
             check_json_parser_failure "tru")
     ]
 
-    val json_number_tests = [
-        ("Parse simple number", fn () => 
-            check_json_parser "42" (JsonNumber 42)),
+    val parse_json_number_tests = [
+        ("Parse simple integer", fn () => 
+            check_json_parser "42" (JsonNumber 42.0)),
         ("Parse zero", fn () => 
-            check_json_parser "0" (JsonNumber 0)),
-        ("Parse large number", fn () => 
-            check_json_parser "999999" (JsonNumber 999999)),
+            check_json_parser "0" (JsonNumber 0.0)),
+        ("Parse negative number", fn () => 
+            check_json_parser "-123" (JsonNumber ~123.0)),
+        ("Parse decimal number", fn () => 
+            check_json_parser "3.14" (JsonNumber 3.14)),
+        ("Parse scientific notation", fn () => 
+            check_json_parser "1.23e-4" (JsonNumber 0.000123)),
         ("Parse number with whitespace", fn () =>
-            check_json_parser "  123  " (JsonNumber 123)),
-        ("Fail on invalid number", fn () =>
-            check_json_parser_failure "12a3")
+            check_json_parser "  123  " (JsonNumber 123.0))
     ]
 
-    val json_string_tests = [
+    val parse_json_string_tests = [
         ("Parse simple string", fn () => 
             check_json_parser "\"hello\"" (JsonString "hello")),
         ("Parse empty string", fn () => 
             check_json_parser "\"\"" (JsonString "")),
         ("Parse string with spaces", fn () => 
             check_json_parser "\"hello world\"" (JsonString "hello world")),
-        ("Parse string with whitespace", fn () =>
+        ("Parse string with escaped characters", fn () => 
+            check_json_parser "\"hello\\nworld\"" (JsonString "hello\nworld")),
+        ("Parse string with all escape sequences", fn () => 
+            check_json_parser "\"\\\"\\\\\\b\\f\\n\\r\\t\"" (JsonString "\"\\\b\f\n\r\t")),
+        ("Parse string with unicode escape", fn () => 
+            check_json_parser "\"\\u0048\\u0065\\u006C\\u006C\\u006F\"" (JsonString "Hello")),
+        ("Parse string with whitespace around", fn () =>
             check_json_parser "  \"test\"  " (JsonString "test")),
         ("Fail on unclosed string", fn () =>
             check_json_parser_failure "\"unclosed")
     ]
 
-    val json_array_tests = [
+    val parse_json_array_tests = [
         ("Parse empty array", fn () => 
             check_json_parser "[]" (JsonArray [])),
         ("Parse array of numbers", fn () => 
-            check_json_parser "[1, 2, 3]" (JsonArray [JsonNumber 1, JsonNumber 2, JsonNumber 3])),
+            check_json_parser "[1, 2, 3]" (JsonArray [JsonNumber 1.0, JsonNumber 2.0, JsonNumber 3.0])),
         ("Parse array of mixed types", fn () => 
             check_json_parser "[1, \"hello\", true]" 
-                (JsonArray [JsonNumber 1, JsonString "hello", JsonBool true])),
+                (JsonArray [JsonNumber 1.0, JsonString "hello", JsonBool true])),
         ("Parse nested array", fn () => 
             check_json_parser "[[1, 2], [3, 4]]" 
                 (JsonArray [
-                    JsonArray [JsonNumber 1, JsonNumber 2], 
-                    JsonArray [JsonNumber 3, JsonNumber 4]
+                    JsonArray [JsonNumber 1.0, JsonNumber 2.0], 
+                    JsonArray [JsonNumber 3.0, JsonNumber 4.0]
                 ])),
         ("Parse array with whitespace", fn () =>
             check_json_parser "  [ 1 , 2 , 3 ]  " 
-                (JsonArray [JsonNumber 1, JsonNumber 2, JsonNumber 3])),
+                (JsonArray [JsonNumber 1.0, JsonNumber 2.0, JsonNumber 3.0])),
         ("Fail on unclosed array", fn () =>
             check_json_parser_failure "[1, 2, 3"),
         ("Fail on missing comma", fn () =>
             check_json_parser_failure "[1 2, 3]")
     ]
 
-    val json_object_tests = [
+    val parse_json_object_tests = [
         ("Parse empty object", fn () => 
             check_json_parser "{}" (JsonObject [])),
         ("Parse simple object", fn () => 
             check_json_parser "{\"name\": \"John\", \"age\": 30}" 
-                (JsonObject [("name", JsonString "John"), ("age", JsonNumber 30)])),
+                (JsonObject [("name", JsonString "John"), ("age", JsonNumber 30.0)])),
         ("Parse nested object", fn () => 
             check_json_parser "{\"person\": {\"name\": \"John\", \"age\": 30}}" 
                 (JsonObject [
                     ("person", JsonObject [
                         ("name", JsonString "John"), 
-                        ("age", JsonNumber 30)
+                        ("age", JsonNumber 30.0)
                     ])
                 ])),
         ("Parse object with array", fn () => 
             check_json_parser "{\"numbers\": [1, 2, 3]}" 
                 (JsonObject [
-                    ("numbers", JsonArray [JsonNumber 1, JsonNumber 2, JsonNumber 3])
+                    ("numbers", JsonArray [JsonNumber 1.0, JsonNumber 2.0, JsonNumber 3.0])
                 ])),
         ("Parse object with whitespace", fn () =>
             check_json_parser "  { \"name\" : \"John\" }  " 
@@ -433,19 +561,19 @@ struct
             check_json_parser_failure "{\"name\": \"John\" \"age\": 30}")
     ]
 
-    val complex_json_tests = [
+    val parse_json_complex_tests = [
         ("Parse complex nested structure", fn () =>
             check_json_parser 
                 "{\"person\": {\"name\": \"John\", \"age\": 30, \"isActive\": true, \"hobbies\": [\"reading\", \"coding\"], \"address\": {\"city\": \"New York\", \"zip\": 10001}}}" 
                 (JsonObject [
                     ("person", JsonObject [
                         ("name", JsonString "John"),
-                        ("age", JsonNumber 30),
+                        ("age", JsonNumber 30.0),
                         ("isActive", JsonBool true),
                         ("hobbies", JsonArray [JsonString "reading", JsonString "coding"]),
                         ("address", JsonObject [
                             ("city", JsonString "New York"),
-                            ("zip", JsonNumber 10001)
+                            ("zip", JsonNumber 10001.0)
                         ])
                     ])
                 ])
@@ -454,69 +582,98 @@ struct
             check_json_parser 
                 "[{\"id\": 1, \"name\": \"Alice\"}, {\"id\": 2, \"name\": \"Bob\"}]"
                 (JsonArray [
-                    JsonObject [("id", JsonNumber 1), ("name", JsonString "Alice")],
-                    JsonObject [("id", JsonNumber 2), ("name", JsonString "Bob")]
+                    JsonObject [("id", JsonNumber 1.0), ("name", JsonString "Alice")],
+                    JsonObject [("id", JsonNumber 2.0), ("name", JsonString "Bob")]
                 ])
         )
     ]
 
-    val whitespace_tests = [
-        ("Parse with leading whitespace", fn () => 
-            check_json_parser "   {\"name\": \"John\"}" 
-                (JsonObject [("name", JsonString "John")])),
-        ("Parse with trailing whitespace", fn () => 
-            check_json_parser "{\"name\": \"John\"}   " 
-                (JsonObject [("name", JsonString "John")])),
-        ("Parse with whitespace between elements", fn () => 
-            check_json_parser "{ \"name\" :  \"John\" ,  \"age\" : 30 }" 
-                (JsonObject [("name", JsonString "John"), ("age", JsonNumber 30)])),
-        ("Parse with mixed whitespace", fn () =>
-            check_json_parser " \n { \t \"name\" \r\n : \t \"John\" } \n "
-                (JsonObject [("name", JsonString "John")]))
+    (* Tests for prettify function *)
+    val prettify_tests = [
+        ("Prettify null", fn () =>
+            assertEqual(prettify JsonNull, "null")),
+        ("Prettify boolean", fn () =>
+            assertEqual(prettify (JsonBool true), "true")),
+        ("Prettify number", fn () =>
+            assertEqual(prettify (JsonNumber 42.0), "42")),
+        ("Prettify string", fn () =>
+            assertEqual(prettify (JsonString "hello"), "\"hello\"")),
+        ("Prettify empty array", fn () =>
+            assertEqual(prettify (JsonArray []), "[]")),
+        ("Prettify simple array", fn () =>
+            assertEqual(prettify (JsonArray [JsonNumber 1.0, JsonNumber 2.0]), 
+                        "[\n\t1,\n\t2\n]")),
+        ("Prettify empty object", fn () =>
+            assertEqual(prettify (JsonObject []), "{}")),
+        ("Prettify simple object", fn () =>
+            assertEqual(prettify (JsonObject [("name", JsonString "John")]), 
+                        "{\n\t\"name\": \"John\"\n}")),
+        ("Prettify nested structure", fn () =>
+            assertEqual(prettify (JsonObject [
+                        ("person", JsonObject [
+                            ("name", JsonString "John"),
+                            ("hobbies", JsonArray [JsonString "reading", JsonString "coding"])
+                        ])
+                    ]),
+                    "{\n\t\"person\": {\n\t\t\"name\": \"John\",\n\t\t\"hobbies\": [\n\t\t\t\"reading\",\n\t\t\t\"coding\"\n\t\t]\n\t}\n}")
+        )
     ]
 
-    (* ToString Tests *)
-    val json_to_string_tests = [
-        ("Convert null to string", fn () => 
-            assertEqual(jsonToString JsonNull, "null")),
-        ("Convert boolean true to string", fn () => 
-            assertEqual(jsonToString (JsonBool true), "true")),
-        ("Convert boolean false to string", fn () => 
-            assertEqual(jsonToString (JsonBool false), "false")),
-        ("Convert number to string", fn () => 
-            assertEqual(jsonToString (JsonNumber 42), "42")),
-        ("Convert string to string", fn () => 
-            assertEqual(jsonToString (JsonString "hello"), "\"hello\"")),
-        ("Convert empty array to string", fn () => 
-            assertEqual(jsonToString (JsonArray []), "[]")),
-        ("Convert array to string", fn () => 
-            assertEqual(jsonToString (JsonArray [JsonNumber 1, JsonNumber 2]), "[1, 2]")),
-        ("Convert empty object to string", fn () => 
-            assertEqual(jsonToString (JsonObject []), "{}")),
-        ("Convert object to string", fn () => 
-            assertEqual(jsonToString (JsonObject [("name", JsonString "John")]), "{\"name\": \"John\"}")),
-        ("Convert complex structure to string", fn () =>
-            assertEqual(
-                jsonToString (JsonObject [
-                    ("person", JsonObject [
-                        ("name", JsonString "John"),
-                        ("hobbies", JsonArray [JsonString "reading", JsonString "coding"])
-                    ])
-                ]),
-                "{\"person\": {\"name\": \"John\", \"hobbies\": [\"reading\", \"coding\"]}}"
-            ))
+    (* Tests for minify function *)
+    val minify_tests = [
+        ("Minify null", fn () =>
+            assertEqual(minify JsonNull, "null")),
+        ("Minify boolean", fn () =>
+            assertEqual(minify (JsonBool true), "true")),
+        ("Minify number", fn () =>
+            assertEqual(minify (JsonNumber 42.0), "42")),
+        ("Minify string", fn () =>
+            assertEqual(minify (JsonString "hello"), "\"hello\"")),
+        ("Minify string with escaped chars", fn () =>
+            assertEqual(minify (JsonString "hello\nworld"), "\"hello\\nworld\"")),
+        ("Minify empty array", fn () =>
+            assertEqual(minify (JsonArray []), "[]")),
+        ("Minify simple array", fn () =>
+            assertEqual(minify (JsonArray [JsonNumber 1.0, JsonNumber 2.0]), "[1,2]")),
+        ("Minify empty object", fn () =>
+            assertEqual(minify (JsonObject []), "{}")),
+        ("Minify simple object", fn () =>
+            assertEqual(minify (JsonObject [("name", JsonString "John")]), "{\"name\":\"John\"}")),
+        ("Minify nested structure", fn () =>
+            assertEqual(minify (JsonObject [
+                        ("person", JsonObject [
+                            ("name", JsonString "John"),
+                            ("hobbies", JsonArray [JsonString "reading", JsonString "coding"])
+                        ])
+                    ]),
+                    "{\"person\":{\"name\":\"John\",\"hobbies\":[\"reading\",\"coding\"]}}")
+        )
     ]
 
-    val json_parser_tests_suite = SuiteNode("JSON Parser Tests", [
-        SuiteLeaf("JSON Null Tests", json_null_tests),
-        SuiteLeaf("JSON Boolean Tests", json_bool_tests),
-        SuiteLeaf("JSON Number Tests", json_number_tests),
-        SuiteLeaf("JSON String Tests", json_string_tests),
-        SuiteLeaf("JSON Array Tests", json_array_tests),
-        SuiteLeaf("JSON Object Tests", json_object_tests),
-        SuiteLeaf("Complex JSON Tests", complex_json_tests),
-        SuiteLeaf("Whitespace Handling Tests", whitespace_tests),
-        SuiteLeaf("JSON ToString Tests", json_to_string_tests)
+    (* Tests for string escaping *)
+    val escape_string_tests = [
+        ("Escape double quotes", fn () =>
+            check_json_parser "\"hello \\\"world\\\"\"" (JsonString "hello \"world\"")),
+        ("Escape backslash", fn () =>
+            check_json_parser "\"C:\\\\Program Files\\\\App\"" (JsonString "C:\\Program Files\\App")),
+        ("Escape forward slash", fn () =>
+            check_json_parser "\"\\/path\\/to\\/file\"" (JsonString "/path/to/file")),
+        ("Escape control characters", fn () =>
+            check_json_parser "\"\\b\\f\\n\\r\\t\"" (JsonString "\b\f\n\r\t"))
+    ]
+
+    (* Full test suite for JsonParser *)
+    val json_parser_tests_suite = SuiteNode("JsonParser Tests", [
+        SuiteLeaf("parse_json - Null Tests", parse_json_null_tests),
+        SuiteLeaf("parse_json - Boolean Tests", parse_json_bool_tests),
+        SuiteLeaf("parse_json - Number Tests", parse_json_number_tests),
+        SuiteLeaf("parse_json - String Tests", parse_json_string_tests),
+        SuiteLeaf("parse_json - Array Tests", parse_json_array_tests),
+        SuiteLeaf("parse_json - Object Tests", parse_json_object_tests),
+        SuiteLeaf("parse_json - Complex Tests", parse_json_complex_tests),
+        SuiteLeaf("prettify Tests", prettify_tests),
+        SuiteLeaf("minify Tests", minify_tests),
+        SuiteLeaf("String Escaping Tests", escape_string_tests)
     ])
 end
 
