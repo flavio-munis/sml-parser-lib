@@ -34,6 +34,7 @@ sig
 	(* Auxialiary Functions*)
 	val not_null     : 'a list parser -> 'a list parser
 	val sepBy        : 'a parser -> 'b parser -> 'b list parser
+	val all_input    : 'a parser -> 'a parser
 end
 
 structure Parser : PARSER_SIG =
@@ -481,6 +482,18 @@ fun sepBy sep element =
 			 | FAILURE err => FAILURE err)
 		| SUCCESS (NONE, state') => SUCCESS ([], state')
 		| FAILURE err => FAILURE err)
+
+(* Ensure the parser consumes the entire input
+ *
+ * f : 'a parser -> 'a parser *)
+fun all_input p =
+	(fn state : parser_state =>
+		case p state of
+			FAILURE x => FAILURE x
+		  | SUCCESS (result, state' : parser_state) => 
+			if String.size (#input state') = 0 
+			then SUCCESS (result, state')
+			else FAILURE ("Unexpected content", state'))
 
 (* 
  * Int/Real Parsers

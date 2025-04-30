@@ -235,16 +235,6 @@ val recursive =
 	in
 		p
 	end
-
-(* Ensure the parser consumes the entire input *)
-fun all_input p =
-	(fn state : parser_state =>
-		case p state of
-			FAILURE x => FAILURE x
-		  | SUCCESS (result, state' : parser_state) => 
-			if String.size (#input state') = 0 
-			then SUCCESS (result, state')
-			else FAILURE ("Unexpected content", state'))
 		
 (* Function exposed by the sig.
  *
