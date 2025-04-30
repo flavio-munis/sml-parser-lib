@@ -19,6 +19,7 @@ structure JsonParser : JSONPARSER_SIG =
 struct
 local
 	open Parser
+	open Utils
 in
 
 type 'a t = 'a parser

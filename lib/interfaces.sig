@@ -60,6 +60,35 @@ sig
 	val bind      : 'a t -> ('a -> 'b t) -> 'b t
 end
 
+
+signature UTILS_SIG =
+sig
+	(* Curried :: operator *)
+	val append    : 'a -> 'a list -> 'a list
+	val replicate : int -> 'a -> 'a list
+end
+
+structure Utils :> UTILS_SIG =
+struct
+
+(* Curried version of :: operator.
+ *
+ * f : 'a -> 'a list -> 'a list *)
+fun append x y = x::y
+
+(* Creates a list of length n of a 'a.
+ *
+ * f : int -> 'a -> 'a list*)
+fun replicate n p =
+	if n < 1
+	then []
+	else
+		if n = 1
+		then [p]
+		else p::(replicate (n- 1) p)
+
+end
+
 (*
 (* Infix Operators Orders *)
 (* FUNCTOR_SIG Operators *)
