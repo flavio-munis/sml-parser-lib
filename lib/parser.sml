@@ -50,9 +50,11 @@ in
 type position = int * int
 
 type parser_state = {
-	input: string,
+	input: char list,
+	input_len: int,
 	pos: position,
 	full_input: string,
+	full_input_len: int,
 	line_index: int list
 }
 
@@ -89,11 +91,15 @@ fun create_state input =
 									 ((i + 1 + x)::acc)
 					  | [] => 0::[] (* Should never happen *)
 			end
+				
+		val len = String.size input
 	in
 		{
-		  input = input,
+		  input = explode input,
+		  input_len = len,
 		  pos = (0, 0),
 		  full_input = input,
+		  full_input_len = len,
 		  line_index = create_line_index input (0::[])
 		}
 	end
@@ -145,7 +151,9 @@ fun get_caret_line upper lower s column =
  *
  * f : string -> parser_state -> string *)
 fun error_msg msg {input = s, 
-				   full_input = fi, 
+				   input_len = _,
+				   full_input = fi,
+				   full_input_len = fi_len,
 				   line_index = li, 
 				   pos = (line, column)} =
 	let
@@ -159,7 +167,7 @@ fun error_msg msg {input = s,
 		val (upper, lower) = 
 			case error_btw of
 				(SOME upper, SOME lower) => (upper - 1, lower)
-			  | (NONE, SOME lower) => (String.size fi, lower)
+			  | (NONE, SOME lower) => (fi_len, lower)
 			  | _ => (0, 0) (* Should Never Happen *) 
 
 		val caret_line = get_caret_line upper lower fi column
@@ -317,8 +325,7 @@ fun attempt p =
 		  SUCCESS (x, state') => SUCCESS (SOME x, state')
 		| FAILURE (msg, state') =>
           let
-			  val consumed =
-				  String.size (#input state) - String.size (#input state')
+			  val consumed = (#input_len state) - (#input_len state')
           in
 			  if consumed = 0 
 			  then SUCCESS (NONE, state')
@@ -377,12 +384,8 @@ fun op <||> (p1, p2) =
 			| FAILURE (msg2, state2 : parser_state) =>
               (* Choose the error from the parser that consumed more input *)
               let
-				  val consumed1 = 
-					  String.size 
-						  (#full_input state) - String.size (#input state1)
-				  val consumed2 = 
-					  String.size 
-						  (#full_input state) - String.size (#input state2)
+				  val consumed1 = (#full_input_len state) - (#input_len state1)
+				  val consumed2 = (#full_input_len state) - (#input_len state2)
             in
               if consumed1 > consumed2 
 			  then FAILURE (msg1, state1)
@@ -402,15 +405,14 @@ fun op <||> (p1, p2) =
  * f : (char -> bool) -> char parser *)
 fun parse_if f =
 	(fn state : parser_state =>
-		if String.size (#input state) < 1
+		if (#input_len state) < 1
 		then FAILURE ("Empty String.", state)
 		else
 			let
 				val (line, column) = #pos state
 
 				val s = #input state
-				val (c, rest) = (String.sub(s, 0), 
-								 String.extract(s, 1, NONE))
+				val (c, rest) = (hd s, tl s)
 
 				val newPos = if c = #"\n" 
 							 then (line + 1, 0) 
@@ -421,7 +423,9 @@ fun parse_if f =
 				else 
 					SUCCESS (c, {
 								input = rest,
+								input_len = (#input_len state) - 1,
 								full_input = #full_input state,
+								full_input_len = #full_input_len state,
 								line_index = #line_index state,
 								pos = newPos
 							    })
@@ -491,7 +495,7 @@ fun all_input p =
 		case p state of
 			FAILURE x => FAILURE x
 		  | SUCCESS (result, state' : parser_state) => 
-			if String.size (#input state') = 0 
+			if (#input_len state') = 0 
 			then SUCCESS (result, state')
 			else FAILURE ("Unexpected content", state'))
 
@@ -615,17 +619,3 @@ val binP =
 
 end
 end
-
-(*
-
-fun aux v =
-case v of
-(JsonObject fields) => 
-let
-fun find (a, b) = if a = "name" then true else false
-in
-List.find find fields
-end
-| _ => NONE;
-
-*)

@@ -157,7 +157,7 @@ struct
     fun check_parser parser input expected_result expected_rest =
         case run_parser parser input of
             SUCCESS (result, state) => 
-                assertEqual ((result, String.size (#input state) = String.size expected_rest), 
+                assertEqual ((result, (#input_len state) = String.size expected_rest), 
                             (expected_result, true))
           | FAILURE (msg, _) => 
                 (print ("Parser failed with message: " ^ msg ^ "\n");
@@ -247,7 +247,7 @@ struct
             case run_parser parser input of
                 SUCCESS (result, state) => 
                     assertEqual ((real_equal(result, expected_result), 
-                                 String.size (#input state) = String.size expected_rest), 
+                                 (#input_len state) = String.size expected_rest), 
                                 (true, true))
               | FAILURE (msg, _) => 
                     (print ("Parser failed with message: " ^ msg ^ "\n");

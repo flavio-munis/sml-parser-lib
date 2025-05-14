@@ -40,15 +40,6 @@ sig
 	val many      : 'a t -> 'a list t
 end
 
-signature ALTERNATIVE_SIG =
-sig
-	include TYPE_SIG
-	
-	val empty : 'a t
-	val <|>   : 'a t * 'a t -> 'a t
-	val <||>  : 'a t * 'a t -> 'a t (* Better Choice Between 'a t's*)
-end
-
 signature MONAD_SIG =
 sig
 	include TYPE_SIG
@@ -58,6 +49,16 @@ sig
 
 	val >>=       : 'a t * ('a -> 'b t) -> 'b t
 	val bind      : 'a t -> ('a -> 'b t) -> 'b t
+end
+
+
+signature ALTERNATIVE_SIG =
+sig
+	include TYPE_SIG
+	
+	val empty : 'a t
+	val <|>   : 'a t * 'a t -> 'a t
+	val <||>  : 'a t * 'a t -> 'a t (* Better Choice Between 'a t's*)
 end
 
 
